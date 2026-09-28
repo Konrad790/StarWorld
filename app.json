@@ -24,10 +24,24 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "17.0"
+          }
+        }
+      ]
     ],
     "assetBundlePatterns": [
       "assets/**"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "aa037476-f8a1-418a-9dd4-cab6a3aa9f28"
+      }
+    }
   }
 }
