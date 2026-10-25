@@ -32,15 +32,17 @@ export async function inferPrice(
     const input = buildFeatureVector(minifig, snapshots, targetYear, targetHalf);
     const output = await mod.forward(input);
     const raw = output[0] ?? 0;
+    // Model predicts y = log1p(price_target). Inverse transformation is expm1(y) = exp(y) - 1.
+    const predictedPriceEur = Math.max(0, Math.expm1(raw));
     return {
       figNum: minifig.figNum,
       horizonMonths: horizon,
-      predictedPriceEur: Math.max(0, raw),
+      predictedPriceEur,
       modelAvailable: true,
     };
   } catch (err) {
     console.warn(`[infer] Inference failed for ${minifig.figNum} h${horizon}m:`, err);
-    return { figNum: minifig.figNum, horizonMonths: horizon, predictedPriceEur: 0, modelAvailable: true };
+    return { figNum: minifig.figNum, horizonMonths: horizon, predictedPriceEur: 0, modelAvailable: false };
   }
 }
 

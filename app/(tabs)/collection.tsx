@@ -18,6 +18,7 @@ import CollectionRow from '../../src/components/CollectionRow';
 import PortfolioChart from '../../src/components/PortfolioChart';
 import { CollectionEntryView } from '../../src/types';
 import { theme } from '../../src/constants/theme';
+import { PlusIcon, EmptyBoxIcon } from '../../src/components/Icons';
 
 export default function CollectionTab() {
   const { entries, isLoading, error, updatePrice, deleteEntry } = useCollection();
@@ -113,8 +114,11 @@ export default function CollectionTab() {
         </View>
       ) : isEmpty ? (
         <View style={styles.center}>
+          <View style={{ marginBottom: 16 }}>
+            <EmptyBoxIcon size={56} color={theme.muted} />
+          </View>
           <Text style={styles.emptyText}>Your collection is empty.</Text>
-          <Text style={styles.emptyHint}>Tap + to add your first minifigure.</Text>
+          <Text style={styles.emptyHint}>Tap + below to add your first minifigure.</Text>
         </View>
       ) : (
         <FlatList
@@ -133,7 +137,7 @@ export default function CollectionTab() {
         accessibilityLabel="Add minifigure to collection"
         accessibilityRole="button"
       >
-        <Text style={styles.fabIcon}>＋</Text>
+        <PlusIcon size={24} color="#0a0a0f" strokeWidth={2.5} />
       </Pressable>
 
       {/* Delete confirmation modal */}

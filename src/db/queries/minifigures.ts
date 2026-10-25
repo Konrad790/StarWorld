@@ -21,6 +21,7 @@ interface MinifigRow {
   p_first_observed_eu: number | null;
   created_at: string | null;
   image_url: string | null;
+  current_price?: number | null;
 }
 
 interface SnapshotRow {
@@ -35,7 +36,7 @@ interface SnapshotRow {
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-/** Returns one minifigure by its Rebrickable fig_num, or null if not found. */
+/** Returns one minifigure by its Rebrickable fig_num, with its latest market price. */
 export async function getMinifigureById(
   figNum: string
 ): Promise<Minifigure | null> {
@@ -43,16 +44,23 @@ export async function getMinifigureById(
     const db = getMarketDb();
     const row = await db.getFirstAsync<MinifigRow>(
       `SELECT
-         fig_num, bricklink_id, name,
-         release_year, retirement_year, estimated_eol_year,
-         num_source_sets, cheapest_set_rrp_eu,
-         has_arm_printing, has_leg_printing,
-         detail_word_count, is_named, wiki_article_length_bytes,
-         p_first_sold_eu, p_first_observed_eu,
-         created_at, image_url
-       FROM minifigures
-       WHERE fig_num = ?`,
-      [figNum]
+         m.fig_num, m.bricklink_id, m.name,
+         m.release_year, m.retirement_year, m.estimated_eol_year,
+         m.num_source_sets, m.cheapest_set_rrp_eu,
+         m.has_arm_printing, m.has_leg_printing,
+         m.detail_word_count, m.is_named, m.wiki_article_length_bytes,
+         m.p_first_sold_eu, m.p_first_observed_eu,
+         m.created_at, m.image_url,
+         COALESCE(s.avg_price_eu, m.p_first_observed_eu) AS current_price
+       FROM minifigures m
+       LEFT JOIN (
+         SELECT fig_num, avg_price_eu, MAX(snapshot_year * 10 + snapshot_half)
+         FROM market_snapshots
+         WHERE fig_num = ?
+         GROUP BY fig_num
+       ) s ON m.fig_num = s.fig_num
+       WHERE m.fig_num = ?`,
+      [figNum, figNum]
     );
     if (!row) return null;
     return rowToMinifigure(row);
@@ -68,14 +76,31 @@ export async function getMinifigureById(
 export async function getAllMinifiguresSummary(): Promise<MinifigSummary[]> {
   try {
     const db = getMarketDb();
-    interface SummaryRow { fig_num: string; bricklink_id: string | null; name: string }
+    interface SummaryRow {
+      fig_num: string;
+      bricklink_id: string | null;
+      name: string;
+      current_price: number | null;
+    }
     const rows = await db.getAllAsync<SummaryRow>(
-      'SELECT fig_num, bricklink_id, name FROM minifigures ORDER BY name ASC'
+      `SELECT 
+         m.fig_num, 
+         m.bricklink_id, 
+         m.name,
+         COALESCE(s.avg_price_eu, m.p_first_observed_eu) AS current_price
+       FROM minifigures m
+       LEFT JOIN (
+         SELECT fig_num, avg_price_eu, MAX(snapshot_year * 10 + snapshot_half)
+         FROM market_snapshots
+         GROUP BY fig_num
+       ) s ON m.fig_num = s.fig_num
+       ORDER BY m.name ASC`
     );
     return rows.map((r: SummaryRow) => ({
       figNum: r.fig_num,
       bricklinkId: r.bricklink_id,
       name: r.name,
+      currentPrice: r.current_price,
     }));
   } catch (err) {
     throw new QueryError(`getAllMinifiguresSummary failed: ${String(err)}`, err);
@@ -155,6 +180,7 @@ function rowToMinifigure(row: MinifigRow): Minifigure {
     pFirstObservedEu: row.p_first_observed_eu,
     createdAt: row.created_at,
     imageUrl: row.image_url,
+    currentPrice: row.current_price ?? row.p_first_observed_eu,
   };
 }
 

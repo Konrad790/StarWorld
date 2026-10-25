@@ -2,14 +2,23 @@
  * ExecuTorch model loader — react-native-executorch v0.10 API.
  *
  * Uses the low-level `loadModel` / `tensor` / `model.execute` primitives.
- * Falls back to a JS stub when the native module is unavailable (Expo Go /
- * web / unit tests).
+ * Requires a native development or production build; Expo Go does not include
+ * the ExecuTorch JSI module.
  */
 
-import { copyAsync, getInfoAsync, makeDirectoryAsync, documentDirectory } from 'expo-file-system/legacy';
+import {
+  copyAsync,
+  deleteAsync,
+  getInfoAsync,
+  makeDirectoryAsync,
+  writeAsStringAsync,
+  documentDirectory,
+} from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import { ForecastEngineState, ForecastHorizon, ModelLoadStatus } from '../types';
 import { MODEL_ASSETS, MODEL_DEST_DIR } from '../constants/models';
+
+const CURRENT_MODEL_VERSION = 'v2_base_score_pte';
 
 // ─── ExecutorchModule interface ───────────────────────────────────────────────
 
@@ -50,16 +59,23 @@ export async function loadAllModels(): Promise<ForecastEngineState> {
     await makeDirectoryAsync(modelsDir, { intermediates: true });
   }
 
+  const versionFlagPath = modelsDir + CURRENT_MODEL_VERSION;
+  const versionInfo = await getInfoAsync(versionFlagPath);
+  const shouldForceRefresh = !versionInfo.exists;
+
   await Promise.all(
     MODEL_ASSETS.map(async ({ horizon, assetRequire, filename }) => {
       try {
         const destPath = modelsDir + filename;
 
         const destInfo = await getInfoAsync(destPath);
-        if (!destInfo.exists) {
+        if (!destInfo.exists || shouldForceRefresh) {
           const asset = Asset.fromModule(assetRequire);
           await asset.downloadAsync();
           if (!asset.localUri) throw new Error(`No localUri for ${filename}`);
+          if (destInfo.exists) {
+            await deleteAsync(destPath, { idempotent: true });
+          }
           await copyAsync({ from: asset.localUri, to: destPath });
         }
 
@@ -72,6 +88,14 @@ export async function loadAllModels(): Promise<ForecastEngineState> {
       }
     })
   );
+
+  if (shouldForceRefresh && failedHorizons.length === 0) {
+    try {
+      await writeAsStringAsync(versionFlagPath, 'v2');
+    } catch {
+      // Non-fatal
+    }
+  }
 
   const status: ModelLoadStatus =
     failedHorizons.length === 0
@@ -103,20 +127,47 @@ async function loadNativeModule(
     };
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const rne = require('react-native-executorch') as RneSubset;
-    const model = rne.loadModel(modelPath);
+    // expo-file-system returns file:// URIs, while ExecuTorch expects an
+    // absolute native filesystem path.
+    const nativeModelPath = modelPath.startsWith('file://')
+      ? decodeURIComponent(modelPath.slice('file://'.length))
+      : modelPath;
+    const model = rne.loadModel(nativeModelPath);
+
+    // Extract exact input/output shapes from model schema (e.g. [1, 16] for input and [1, 1] for output)
+    const forwardMethod = model.schema?.forward;
+    const inputShape: number[] = (() => {
+      const inParam = forwardMethod?.inputs?.[0];
+      if (inParam && 'shape' in inParam && Array.isArray(inParam.shape)) {
+        return inParam.shape.map((d: any) =>
+          typeof d === 'number' ? d : (d?.value ?? 1)
+        );
+      }
+      return [1, MODEL_INPUT_SIZE];
+    })();
+
+    const outputShape: number[] = (() => {
+      const outParam = forwardMethod?.outputs?.[0];
+      if (outParam && 'shape' in outParam && Array.isArray(outParam.shape)) {
+        return outParam.shape.map((d: any) =>
+          typeof d === 'number' ? d : (d?.value ?? 1)
+        );
+      }
+      return [1, 1];
+    })();
 
     return {
       async forward(input: number[]): Promise<number[]> {
         const inputTensor = rne.tensor(
           'float32',
-          [MODEL_INPUT_SIZE],
+          inputShape,
           new Float32Array(input)
         );
-        const outputTensor = rne.tensor('float32', [1]);
+        const outputTensor = rne.tensor('float32', outputShape);
         try {
           model.execute('forward', [inputTensor], [outputTensor]);
-          const result = outputTensor.getData(new Float32Array(1));
-          return [result[0]];
+          const result = outputTensor.getData(new Float32Array(outputTensor.numel || 1));
+          return Array.from(result);
         } finally {
           inputTensor.dispose();
           outputTensor.dispose();
@@ -126,24 +177,12 @@ async function loadNativeModule(
         model.dispose();
       },
     };
-  } catch {
-    console.warn(
-      `[ModelLoader] react-native-executorch unavailable for h${horizon}m — using stub`
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `ExecuTorch failed to load model h${horizon}m. ` +
+        `Use a native development build (not Expo Go). ${reason}`,
+      { cause: error }
     );
-    return createStubModule(horizon);
   }
-}
-
-function createStubModule(horizon: ForecastHorizon): ExecutorchModule {
-  return {
-    async forward(input: number[]): Promise<number[]> {
-      // input[9] = price_6m_ago (most recent observed market price)
-      // input[0] = log_p_initial
-      const price6mAgo = input[9] ?? 0;
-      const logPInitial = input[0] ?? 0;
-      const basePrice = price6mAgo > 0 ? price6mAgo : Math.expm1(logPInitial);
-      const predicted = basePrice * Math.pow(1.003, horizon);
-      return [predicted];
-    },
-  };
 }

@@ -9,7 +9,10 @@
     "scheme": "starworld",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.starworld.app"
+      "bundleIdentifier": "com.starworld.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.starworld.app",

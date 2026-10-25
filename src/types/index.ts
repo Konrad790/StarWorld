@@ -26,6 +26,7 @@ export interface Minifigure {
   pFirstObservedEu: number | null;
   createdAt: string | null;
   imageUrl: string | null;
+  currentPrice?: number | null;
 }
 
 /** One half-year market snapshot row from market_snapshots. */
@@ -104,12 +105,14 @@ export interface SearchResult {
   bricklinkId: string | null;
   name: string;
   score: number; // Fuse.js score; lower = better match (0 = exact)
+  currentPrice?: number | null;
 }
 
 export interface MinifigSummary {
   figNum: string;
   bricklinkId: string | null;
   name: string;
+  currentPrice?: number | null;
 }
 
 // ─── DB handles (opaque, managed by db/client.ts) ────────────────────────────

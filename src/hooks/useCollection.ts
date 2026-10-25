@@ -82,7 +82,7 @@ export function CollectionProvider({ children }: { children: React.ReactNode }) 
         return {
           entry: e,
           minifig,
-          roi: computeRoi(e.purchasePriceEur, minifig?.pFirstObservedEu ?? null),
+          roi: computeRoi(e.purchasePriceEur, minifig?.currentPrice ?? minifig?.pFirstObservedEu ?? null),
         };
       });
 
@@ -107,7 +107,7 @@ export function CollectionProvider({ children }: { children: React.ReactNode }) 
       const newView: CollectionEntryView = {
         entry: newRaw,
         minifig,
-        roi: computeRoi(newRaw.purchasePriceEur, minifig?.pFirstObservedEu ?? null),
+        roi: computeRoi(newRaw.purchasePriceEur, minifig?.currentPrice ?? minifig?.pFirstObservedEu ?? null),
       };
       setEntries((prev) => [newView, ...prev]);
     },
@@ -124,7 +124,7 @@ export function CollectionProvider({ children }: { children: React.ReactNode }) 
           return {
             ...v,
             entry: updated,
-            roi: computeRoi(newPriceEur, v.minifig?.pFirstObservedEu ?? null),
+            roi: computeRoi(newPriceEur, v.minifig?.currentPrice ?? v.minifig?.pFirstObservedEu ?? null),
           };
         })
       );

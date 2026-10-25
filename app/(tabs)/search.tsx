@@ -8,12 +8,14 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useMinifigSearch } from '../../src/hooks/useMinifigSearch';
 import MinifigCard from '../../src/components/MinifigCard';
 import { theme } from '../../src/constants/theme';
 import { SearchResult } from '../../src/types';
+import { SearchIcon, CloseIcon } from '../../src/components/Icons';
 
 export default function SearchTab() {
   const { query, setQuery, results, isSearching, isIndexReady } =
@@ -28,7 +30,7 @@ export default function SearchTab() {
   const renderItem = ({ item }: { item: SearchResult }) => (
     <MinifigCard
       result={item}
-      currentPrice={undefined}
+      currentPrice={item.currentPrice}
       onPress={() => router.push(`/search/${item.figNum}`)}
     />
   );
@@ -40,7 +42,9 @@ export default function SearchTab() {
     >
       {/* Search bar */}
       <View style={styles.searchBar}>
-        <Text style={styles.searchIcon}>🔍</Text>
+        <View style={styles.searchIconWrapper}>
+          <SearchIcon size={18} color={theme.muted} strokeWidth={2} />
+        </View>
         <TextInput
           style={styles.input}
           placeholder={
@@ -51,10 +55,19 @@ export default function SearchTab() {
           onChangeText={setQuery}
           autoCorrect={false}
           autoCapitalize="none"
-          clearButtonMode="while-editing"
           editable={isIndexReady}
           accessibilityLabel="Search minifigures"
         />
+        {query.length > 0 && !showLoading && (
+          <Pressable
+            onPress={() => setQuery('')}
+            hitSlop={8}
+            style={styles.clearBtn}
+            accessibilityLabel="Clear search query"
+          >
+            <CloseIcon size={16} color={theme.muted} />
+          </Pressable>
+        )}
         {showLoading && (
           <ActivityIndicator
             size="small"
@@ -110,9 +123,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
   },
-  searchIcon: {
-    fontSize: 16,
+  searchIconWrapper: {
     marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearBtn: {
+    padding: 4,
+    marginLeft: 6,
+    borderRadius: 12,
   },
   input: {
     flex: 1,

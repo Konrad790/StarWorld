@@ -39,8 +39,8 @@ export function useMinifigDetail(figNum: string): UseMinifigDetailResult {
         setMinifig(fig);
         setSnapshots(snaps);
 
-        // Run forecasts if models are at least partially available
-        if (modelsStatus !== 'failed' && fig) {
+        // Run forecasts if models are loaded (not while still loading or failed)
+        if ((modelsStatus === 'ready' || modelsStatus === 'partial') && fig) {
           const now = new Date();
           const baseYear = now.getFullYear();
           const baseHalf = (now.getMonth() < 6 ? 1 : 2) as 1 | 2;

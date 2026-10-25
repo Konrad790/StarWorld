@@ -12,6 +12,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useMinifigDetail } from '../../src/hooks/useMinifigDetail';
 import PriceChart from '../../src/components/PriceChart';
 import { theme } from '../../src/constants/theme';
+import { WarningIcon } from '../../src/components/Icons';
 
 const PLACEHOLDER_IMAGE = require('../../assets/icon.png') as number;
 
@@ -40,9 +41,16 @@ export default function MinifigDetailScreen() {
     );
   }
 
+  const latestSnapshot =
+    snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+  const currentPrice =
+    latestSnapshot?.avgPriceEu ??
+    minifig.currentPrice ??
+    minifig.pFirstObservedEu;
+
   const priceLabel =
-    minifig.pFirstObservedEu != null
-      ? `€ ${minifig.pFirstObservedEu.toFixed(2)}`
+    currentPrice != null
+      ? `€ ${currentPrice.toFixed(2)}`
       : 'N/A';
 
   return (
@@ -79,9 +87,12 @@ export default function MinifigDetailScreen() {
 
         {/* Forecast availability note */}
         {forecasts.some((f) => !f.modelAvailable) && (
-          <Text style={styles.fcNote}>
-            ⚠️ Some forecast horizons unavailable
-          </Text>
+          <View style={styles.fcNoteRow}>
+            <WarningIcon size={14} color={theme.warning} />
+            <Text style={styles.fcNote}>
+              Some forecast horizons are unavailable
+            </Text>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -160,10 +171,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 10,
   },
+  fcNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: 'rgba(247, 201, 79, 0.08)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
   fcNote: {
     color: theme.warning,
-    fontSize: 13,
-    marginTop: 8,
-    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

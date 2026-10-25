@@ -58,6 +58,7 @@ export function searchMinifigures(
     bricklinkId: r.item.bricklinkId,
     name: r.item.name,
     score: r.score ?? 1,
+    currentPrice: r.item.currentPrice,
   }));
 
   // For ID-like queries (sw\d+), boost exact prefix matches on either ID field to the top

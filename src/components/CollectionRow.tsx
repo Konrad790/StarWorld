@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { CollectionEntryView } from '../types';
 import { theme } from '../constants/theme';
+import { EditIcon, TrashIcon } from './Icons';
 
 interface CollectionRowProps {
   view: CollectionEntryView;
@@ -26,9 +27,10 @@ export default function CollectionRow({ view, onEditPrice, onDelete }: Collectio
   const { entry, minifig, roi } = view;
 
   const displayName = minifig?.name ?? (minifig?.bricklinkId ?? entry.figNum);
+  const currentPrice = minifig?.currentPrice ?? minifig?.pFirstObservedEu;
   const currentPriceLabel =
-    minifig?.pFirstObservedEu != null
-      ? `€ ${minifig.pFirstObservedEu.toFixed(2)}`
+    currentPrice != null
+      ? `€ ${currentPrice.toFixed(2)}`
       : 'N/A';
   const purchaseLabel = `€ ${entry.purchasePriceEur.toFixed(2)}`;
   const roiLabel = formatRoi(roi);
@@ -64,15 +66,15 @@ export default function CollectionRow({ view, onEditPrice, onDelete }: Collectio
           accessibilityLabel={`Edit purchase price for ${displayName}`}
           accessibilityRole="button"
         >
-          <Text style={styles.actionIcon}>✏️</Text>
+          <EditIcon size={16} color={theme.textSecondary} />
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.actionBtn, pressed && styles.actionBtnPressed]}
+          style={({ pressed }) => [styles.actionBtn, styles.deleteBtn, pressed && styles.actionBtnPressed]}
           onPress={() => onDelete(entry.id)}
           accessibilityLabel={`Delete ${displayName} from collection`}
           accessibilityRole="button"
         >
-          <Text style={styles.deleteIcon}>🗑️</Text>
+          <TrashIcon size={16} color={theme.danger} />
         </Pressable>
       </View>
     </View>
@@ -140,18 +142,19 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 6,
   },
   actionBtn: {
     padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteBtn: {
+    backgroundColor: 'rgba(247, 96, 79, 0.08)',
   },
   actionBtnPressed: {
     opacity: 0.6,
-  },
-  actionIcon: {
-    fontSize: 16,
-  },
-  deleteIcon: {
-    fontSize: 16,
   },
 });

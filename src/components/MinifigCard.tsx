@@ -2,16 +2,18 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SearchResult } from '../types';
 import { theme } from '../constants/theme';
+import { ChevronRightIcon } from './Icons';
 
 interface MinifigCardProps {
   result: SearchResult;
-  currentPrice: number | null | undefined;
+  currentPrice?: number | null;
   onPress: () => void;
 }
 
 export default function MinifigCard({ result, currentPrice, onPress }: MinifigCardProps) {
+  const price = currentPrice !== undefined ? currentPrice : result.currentPrice;
   const priceLabel =
-    currentPrice != null ? `€ ${currentPrice.toFixed(2)}` : 'N/A';
+    price != null ? `€ ${price.toFixed(2)}` : 'N/A';
 
   return (
     <Pressable
@@ -26,7 +28,10 @@ export default function MinifigCard({ result, currentPrice, onPress }: MinifigCa
         </Text>
         <Text style={styles.id}>{result.bricklinkId ?? result.figNum}</Text>
       </View>
-      <Text style={styles.price}>{priceLabel}</Text>
+      <View style={styles.right}>
+        <Text style={styles.price}>{priceLabel}</Text>
+        <ChevronRightIcon size={14} color={theme.muted} />
+      </View>
     </Pressable>
   );
 }
@@ -62,6 +67,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.muted,
     fontFamily: 'monospace',
+  },
+  right: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   price: {
     fontSize: 15,

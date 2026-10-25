@@ -1,111 +1,139 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, PanResponder } from 'react-native';
-import Svg, { Polyline, Line, Text as SvgText, Circle } from 'react-native-svg';
+import Svg, {
+  Polyline,
+  Polygon,
+  Line,
+  Text as SvgText,
+  Circle,
+  Defs,
+  LinearGradient,
+  Stop,
+} from 'react-native-svg';
 import { ForecastPoint, MarketSnapshot } from '../types';
 import { theme } from '../constants/theme';
+import { TrendingUpIcon, SparklesIcon } from './Icons';
 
 interface PriceChartProps {
   snapshots: MarketSnapshot[];
   forecasts: ForecastPoint[];
 }
 
-const CHART_H = 200;
-const PADDING = { top: 16, right: 16, bottom: 32, left: 52 };
+const CHART_H = 210;
+const PADDING = { top: 20, right: 16, bottom: 32, left: 56 };
 
 function formatEur(v: number): string {
+  if (v >= 1000) return `€${(v / 1000).toFixed(1)}k`;
   return `€${v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)}`;
 }
 
-// A single touchable data point (historical or forecast)
 interface DataPoint {
   x: number;
   y: number;
-  label: string;   // period or "+Nm"
+  label: string;
   price: number;
   isForecast: boolean;
+  horizon?: number;
 }
 
 export default function PriceChart({ snapshots, forecasts }: PriceChartProps) {
   const width = Dimensions.get('window').width - 32;
 
-  // ── Tooltip state ────────────────────────────────────────────────────────────
-  const [tooltip, setTooltip] = useState<{
-    x: number;
-    y: number;
-    label: string;
-    price: number;
-    isForecast: boolean;
-  } | null>(null);
+  // Active / scrubbed point
+  const [activePoint, setActivePoint] = useState<DataPoint | null>(null);
 
   const chartData = useMemo(() => {
     const histPrices = snapshots.map((s) => s.avgPriceEu ?? 0);
-    const fcPrices = forecasts
+    const fcSorted = [...forecasts]
       .filter((f) => f.modelAvailable && f.predictedPriceEur > 0)
-      .map((f) => f.predictedPriceEur);
+      .sort((a, b) => a.horizonMonths - b.horizonMonths);
+    const fcPrices = fcSorted.map((f) => f.predictedPriceEur);
 
     const allPrices = [...histPrices, ...fcPrices];
     if (allPrices.length === 0) return null;
 
-    const minY = Math.min(...allPrices) * 0.9;
-    const maxY = Math.max(...allPrices) * 1.1;
+    const rawMin = Math.min(...allPrices);
+    const rawMax = Math.max(...allPrices);
+    const spread = rawMax - rawMin || rawMax * 0.2 || 1;
+
+    const minY = Math.max(0, Math.floor(rawMin - spread * 0.1));
+    const maxY = Math.ceil(rawMax + spread * 0.12);
     const rangeY = maxY - minY || 1;
 
     const chartW = width - PADDING.left - PADDING.right;
     const chartH = CHART_H - PADDING.top - PADDING.bottom;
 
-    const totalSlots = histPrices.length + forecasts.length;
+    const totalSlots = histPrices.length + fcSorted.length;
     const slotW = chartW / Math.max(totalSlots - 1, 1);
 
     const toX = (i: number) => PADDING.left + i * slotW;
     const toY = (v: number) =>
       PADDING.top + chartH - ((v - minY) / rangeY) * chartH;
 
-    const snapLabel = (s: MarketSnapshot) => `${s.snapshotYear}-H${s.snapshotHalf}`;
+    const snapLabel = (s: MarketSnapshot) => `${s.snapshotYear} H${s.snapshotHalf}`;
 
-    // Historical polyline
-    const histPoints = histPrices
-      .map((p, i) => `${toX(i)},${toY(p)}`)
-      .join(' ');
+    // Historical line coordinates
+    const histCoords = histPrices.map((p, i) => ({ x: toX(i), y: toY(p) }));
+    const histPoints = histCoords.map((c) => `${c.x},${c.y}`).join(' ');
 
-    // Forecast
-    const fcOffset = histPrices.length - 1;
-    const fcSorted = [...forecasts].sort((a, b) => a.horizonMonths - b.horizonMonths);
-    const fcPoints = fcSorted.map((f, i) => ({
-      x: toX(fcOffset + 1 + i),
-      y: toY(f.predictedPriceEur),
-      modelAvailable: f.modelAvailable,
-      price: f.predictedPriceEur,
-      horizon: f.horizonMonths,
-    }));
-
-    // Connection bridge
-    const lastHistX = toX(fcOffset);
-    const lastHistY = histPrices.length > 0 ? toY(histPrices[histPrices.length - 1]) : 0;
-    const connectLine =
-      fcPoints.length > 0
-        ? `${lastHistX},${lastHistY} ${fcPoints[0].x},${fcPoints[0].y}`
+    // Historical filled gradient polygon
+    const baseY = toY(minY);
+    const histPolyPoints =
+      histCoords.length > 0
+        ? `${histCoords[0].x},${baseY} ` +
+          histPoints +
+          ` ${histCoords[histCoords.length - 1].x},${baseY}`
         : '';
 
-    // Y-axis ticks
-    const yTicks = [0, 0.33, 0.67, 1].map((t) => ({
-      y: PADDING.top + (1 - t) * chartH,
-      label: formatEur(minY + t * rangeY),
-    }));
+    // Forecast line coordinates — starts from the last historical point for continuity
+    const fcOffset = Math.max(0, histPrices.length - 1);
+    const lastHistCoord = histCoords.length > 0 ? histCoords[histCoords.length - 1] : { x: toX(0), y: toY(0) };
 
-    // X-axis labels
+    const fcCoords = [
+      lastHistCoord,
+      ...fcSorted.map((f, i) => ({
+        x: toX(fcOffset + 1 + i),
+        y: toY(f.predictedPriceEur),
+        horizon: f.horizonMonths,
+        price: f.predictedPriceEur,
+      })),
+    ];
+    const fcPoints = fcCoords.map((c) => `${c.x},${c.y}`).join(' ');
+
+    // Forecast gradient polygon
+    const fcPolyPoints =
+      fcCoords.length > 1
+        ? `${fcCoords[0].x},${baseY} ` +
+          fcPoints +
+          ` ${fcCoords[fcCoords.length - 1].x},${baseY}`
+        : '';
+
+    // Y-axis grid ticks (4 evenly spaced levels)
+    const yTicks = [0, 0.33, 0.67, 1].map((t) => {
+      const val = minY + t * rangeY;
+      return {
+        y: PADDING.top + (1 - t) * chartH,
+        label: formatEur(val),
+      };
+    });
+
+    // Milestone X-axis labels
     const xLabels: Array<{ x: number; label: string }> = [];
     if (snapshots.length > 0) {
-      xLabels.push({ x: toX(0), label: snapLabel(snapshots[0]) });
-      if (snapshots.length > 1) {
-        xLabels.push({ x: toX(fcOffset), label: snapLabel(snapshots[snapshots.length - 1]) });
+      xLabels.push({ x: toX(0), label: `${snapshots[0].snapshotYear}` });
+      if (snapshots.length > 2) {
+        const midIdx = Math.floor(snapshots.length / 2);
+        xLabels.push({ x: toX(midIdx), label: `${snapshots[midIdx].snapshotYear}` });
       }
+      xLabels.push({ x: lastHistCoord.x, label: 'Now' });
     }
-    if (fcPoints.length > 0) {
-      const last = fcPoints[fcPoints.length - 1];
-      xLabels.push({ x: last.x, label: `+${last.horizon}m` });
+    if (fcSorted.length > 0) {
+      const lastFc = fcSorted[fcSorted.length - 1];
+      const lastFcX = toX(fcOffset + fcSorted.length);
+      xLabels.push({ x: lastFcX, label: `+${lastFc.horizonMonths}m` });
     }
 
-    // All touchable data points in order
+    // All touchable data points
     const allPoints: DataPoint[] = [
       ...snapshots.map((s, i) => ({
         x: toX(i),
@@ -117,32 +145,56 @@ export default function PriceChart({ snapshots, forecasts }: PriceChartProps) {
       ...fcSorted.map((f, i) => ({
         x: toX(fcOffset + 1 + i),
         y: toY(f.predictedPriceEur),
-        label: `+${f.horizonMonths}m`,
+        label: `+${f.horizonMonths}m (${addMonthsStr(f.horizonMonths)})`,
         price: f.predictedPriceEur,
         isForecast: true,
+        horizon: f.horizonMonths,
       })),
     ];
 
-    return { histPoints, fcPoints, connectLine, yTicks, xLabels, allPoints, slotW };
+    const currentPrice = histPrices.length > 0 ? histPrices[histPrices.length - 1] : 0;
+    const finalPredicted = fcPrices.length > 0 ? fcPrices[fcPrices.length - 1] : currentPrice;
+    const totalGrowthPct =
+      currentPrice > 0 ? ((finalPredicted - currentPrice) / currentPrice) * 100 : 0;
+
+    return {
+      histPoints,
+      histPolyPoints,
+      fcPoints,
+      fcPolyPoints,
+      fcSortedCoords: fcCoords.slice(1),
+      yTicks,
+      xLabels,
+      allPoints,
+      currentPrice,
+      finalPredicted,
+      totalGrowthPct,
+      lastHistCoord,
+    };
   }, [snapshots, forecasts, width]);
 
-  // ── PanResponder — pick nearest point on touch ────────────────────────────
+  // Keep a ref of all points for pan responder without updating ref in render
   const allPointsRef = useRef<DataPoint[]>([]);
-  if (chartData) allPointsRef.current = chartData.allPoints;
+  useEffect(() => {
+    if (chartData) {
+      allPointsRef.current = chartData.allPoints;
+    }
+  }, [chartData]);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => pickPoint(evt.nativeEvent.locationX),
-      onPanResponderMove: (evt) => pickPoint(evt.nativeEvent.locationX),
-      onPanResponderRelease: () => {
-        // keep tooltip visible for a moment then dismiss
-        setTimeout(() => setTooltip(null), 1800);
-      },
-      onPanResponderTerminate: () => setTooltip(null),
-    })
-  ).current;
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => pickPoint(evt.nativeEvent.locationX),
+        onPanResponderMove: (evt) => pickPoint(evt.nativeEvent.locationX),
+        onPanResponderRelease: () => {
+          setTimeout(() => setActivePoint(null), 2500);
+        },
+        onPanResponderTerminate: () => setActivePoint(null),
+      }),
+    []
+  );
 
   function pickPoint(touchX: number) {
     const pts = allPointsRef.current;
@@ -151,37 +203,104 @@ export default function PriceChart({ snapshots, forecasts }: PriceChartProps) {
     let minDist = Math.abs(touchX - pts[0].x);
     for (let i = 1; i < pts.length; i++) {
       const d = Math.abs(touchX - pts[i].x);
-      if (d < minDist) { minDist = d; closest = pts[i]; }
+      if (d < minDist) {
+        minDist = d;
+        closest = pts[i];
+      }
     }
-    setTooltip(closest);
+    setActivePoint(closest);
   }
 
-  // ── Empty state ───────────────────────────────────────────────────────────
   if (!chartData || snapshots.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>No price data available</Text>
+        <Text style={styles.emptyText}>No historical price data available</Text>
       </View>
     );
   }
 
-  const { histPoints, fcPoints, connectLine, yTicks, xLabels } = chartData;
+  const {
+    histPoints,
+    histPolyPoints,
+    fcPoints,
+    fcPolyPoints,
+    fcSortedCoords,
+    yTicks,
+    xLabels,
+    currentPrice,
+    finalPredicted,
+    totalGrowthPct,
+  } = chartData;
 
-  // Tooltip box positioning — clamp so it never overflows left/right edges
-  const TOOLTIP_W = 110;
-  const tooltipLeft = tooltip
-    ? Math.min(Math.max(tooltip.x - TOOLTIP_W / 2, 0), width - TOOLTIP_W)
-    : 0;
-  const tooltipTop = tooltip
-    ? Math.max(tooltip.y - 56, PADDING.top)
-    : 0;
+  const displayPoint = activePoint ?? {
+    price: currentPrice,
+    label: 'Latest Market Price',
+    isForecast: false,
+    x: 0,
+    y: 0,
+  };
+
+  const isPositiveGrowth = totalGrowthPct >= 0;
 
   return (
     <View style={[styles.container, { width }]}>
-      {/* Touch capture layer wraps the SVG */}
+      {/* ── Dynamic Header / Scrubber Summary ────────────────────────── */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.scrubberLabel}>
+            {activePoint
+              ? activePoint.isForecast
+                ? `PROJECTED ${activePoint.label.toUpperCase()}`
+                : `HISTORICAL ${activePoint.label.toUpperCase()}`
+              : 'MARKET VALUE'}
+          </Text>
+          <Text style={styles.scrubberPrice}>
+            € {displayPoint.price.toFixed(2)}
+          </Text>
+        </View>
+
+        {chartData.fcSortedCoords.length > 0 && (
+          <View
+            style={[
+              styles.growthBadge,
+              isPositiveGrowth ? styles.growthPositive : styles.growthNegative,
+            ]}
+          >
+            <TrendingUpIcon
+              size={14}
+              color={isPositiveGrowth ? theme.success : theme.danger}
+            />
+            <Text
+              style={[
+                styles.growthText,
+                { color: isPositiveGrowth ? theme.success : theme.danger },
+              ]}
+            >
+              {isPositiveGrowth ? '+' : ''}
+              {totalGrowthPct.toFixed(1)}% ({finalPredicted >= currentPrice ? '+' : ''}€{(finalPredicted - currentPrice).toFixed(1)})
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── SVG Chart Area ───────────────────────────────────────────── */}
       <View {...panResponder.panHandlers} style={{ width, height: CHART_H }}>
         <Svg width={width} height={CHART_H}>
-          {/* Y-axis grid lines + labels */}
+          <Defs>
+            {/* Historical blue gradient fill */}
+            <LinearGradient id="histGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#4f8ef7" stopOpacity="0.28" />
+              <Stop offset="100%" stopColor="#4f8ef7" stopOpacity="0.0" />
+            </LinearGradient>
+
+            {/* Forecast purple gradient fill */}
+            <LinearGradient id="fcGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#9b6ff7" stopOpacity="0.22" />
+              <Stop offset="100%" stopColor="#9b6ff7" stopOpacity="0.0" />
+            </LinearGradient>
+          </Defs>
+
+          {/* Horizontal grid lines & Y labels */}
           {yTicks.map((tick, i) => (
             <React.Fragment key={i}>
               <Line
@@ -190,14 +309,16 @@ export default function PriceChart({ snapshots, forecasts }: PriceChartProps) {
                 x2={width - PADDING.right}
                 y2={tick.y}
                 stroke={theme.border}
-                strokeWidth={0.5}
+                strokeWidth={1}
                 strokeDasharray="4 4"
+                opacity={0.6}
               />
               <SvgText
-                x={PADDING.left - 4}
+                x={PADDING.left - 8}
                 y={tick.y + 4}
                 textAnchor="end"
                 fontSize={10}
+                fontWeight="500"
                 fill={theme.muted}
               >
                 {tick.label}
@@ -205,134 +326,189 @@ export default function PriceChart({ snapshots, forecasts }: PriceChartProps) {
             </React.Fragment>
           ))}
 
+          {/* Historical gradient area */}
+          {histPolyPoints.length > 0 && (
+            <Polygon points={histPolyPoints} fill="url(#histGrad)" />
+          )}
+
+          {/* Forecast gradient area */}
+          {fcPolyPoints.length > 0 && (
+            <Polygon points={fcPolyPoints} fill="url(#fcGrad)" />
+          )}
+
           {/* Historical line */}
           {histPoints.length > 0 && (
             <Polyline
               points={histPoints}
               fill="none"
-              stroke={theme.chart.historical}
-              strokeWidth={2}
-            />
-          )}
-
-          {/* Connection bridge to forecast */}
-          {connectLine && (
-            <Polyline
-              points={connectLine}
-              fill="none"
-              stroke={theme.chart.forecast}
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
+              stroke="#4f8ef7"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           )}
 
           {/* Forecast dashed line */}
-          {fcPoints.length > 1 && (
+          {fcPoints.length > 0 && (
             <Polyline
-              points={fcPoints.map((p) => `${p.x},${p.y}`).join(' ')}
+              points={fcPoints}
               fill="none"
-              stroke={theme.chart.forecast}
+              stroke="#9b6ff7"
               strokeWidth={2}
-              strokeDasharray="5 4"
+              strokeDasharray="6 4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           )}
 
-          {/* Forecast data points */}
-          {fcPoints.map((p, i) => (
+          {/* Forecast point dots */}
+          {fcSortedCoords.map((p, i) => (
             <Circle
               key={i}
               cx={p.x}
               cy={p.y}
-              r={4}
-              fill={p.modelAvailable ? theme.chart.forecast : 'transparent'}
-              stroke={theme.chart.forecast}
-              strokeWidth={1.5}
+              r={3.5}
+              fill="#13131a"
+              stroke="#9b6ff7"
+              strokeWidth={2}
             />
           ))}
 
-          {/* Active touch crosshair */}
-          {tooltip && (
+          {/* Active touch scrubber line & point */}
+          {activePoint && (
             <>
               <Line
-                x1={tooltip.x}
-                y1={PADDING.top}
-                x2={tooltip.x}
+                x1={activePoint.x}
+                y1={PADDING.top - 6}
+                x2={activePoint.x}
                 y2={CHART_H - PADDING.bottom}
-                stroke={theme.accent}
-                strokeWidth={1}
+                stroke={activePoint.isForecast ? '#9b6ff7' : '#4f8ef7'}
+                strokeWidth={1.5}
                 strokeDasharray="3 3"
               />
               <Circle
-                cx={tooltip.x}
-                cy={tooltip.y}
-                r={5}
-                fill={tooltip.isForecast ? theme.chart.forecast : theme.chart.historical}
-                stroke={theme.accent}
-                strokeWidth={1.5}
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r={7}
+                fill={activePoint.isForecast ? '#9b6ff7' : '#4f8ef7'}
+                opacity={0.25}
+              />
+              <Circle
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r={4}
+                fill="#ffffff"
+                stroke={activePoint.isForecast ? '#9b6ff7' : '#4f8ef7'}
+                strokeWidth={2}
               />
             </>
           )}
 
-          {/* X-axis labels */}
+          {/* X-axis milestone labels */}
           {xLabels.map((lbl, i) => (
             <SvgText
               key={i}
               x={lbl.x}
-              y={CHART_H - 4}
+              y={CHART_H - 10}
               textAnchor="middle"
-              fontSize={9}
+              fontSize={10}
+              fontWeight="600"
               fill={theme.muted}
             >
               {lbl.label}
             </SvgText>
           ))}
         </Svg>
-
-        {/* Floating tooltip bubble */}
-        {tooltip && (
-          <View
-            style={[
-              styles.tooltip,
-              { left: tooltipLeft, top: tooltipTop },
-            ]}
-            pointerEvents="none"
-          >
-            <Text style={styles.tooltipPrice}>{formatEur(tooltip.price)}</Text>
-            <Text style={styles.tooltipLabel}>
-              {tooltip.isForecast ? `Forecast ${tooltip.label}` : tooltip.label}
-            </Text>
-          </View>
-        )}
       </View>
 
-      {/* Legend */}
+      {/* ── Legend ─────────────────────────────────────────────────── */}
       <View style={styles.legend}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: theme.chart.historical }]} />
-          <Text style={styles.legendText}>Historical</Text>
+          <View style={[styles.legendDot, { backgroundColor: '#4f8ef7' }]} />
+          <Text style={styles.legendText}>Historical Sales</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: theme.chart.forecast }]} />
-          <Text style={styles.legendText}>Forecast</Text>
+          <View
+            style={[
+              styles.legendDot,
+              { backgroundColor: '#9b6ff7', borderWidth: 1, borderColor: '#13131a' },
+            ]}
+          />
+          <View style={styles.aiTag}>
+            <SparklesIcon size={12} color="#9b6ff7" />
+            <Text style={styles.legendTextAi}>AI Forecast</Text>
+          </View>
         </View>
       </View>
     </View>
   );
 }
 
+function addMonthsStr(months: number): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + months);
+  return d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+}
+
 const styles = StyleSheet.create({
   container: {
     backgroundColor: theme.surface,
-    borderRadius: 12,
-    padding: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingTop: 16,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
     overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 6,
+    marginBottom: 8,
+  },
+  headerLeft: {
+    gap: 2,
+  },
+  scrubberLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.muted,
+    letterSpacing: 0.5,
+  },
+  scrubberPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: theme.text,
+    letterSpacing: -0.5,
+  },
+  growthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  growthPositive: {
+    backgroundColor: 'rgba(61, 214, 140, 0.12)',
+  },
+  growthNegative: {
+    backgroundColor: 'rgba(247, 96, 79, 0.12)',
+  },
+  growthText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   empty: {
     height: CHART_H,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.surface,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   emptyText: {
     color: theme.muted,
@@ -340,9 +516,13 @@ const styles = StyleSheet.create({
   },
   legend: {
     flexDirection: 'row',
-    gap: 16,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: 18,
     paddingHorizontal: 8,
-    paddingBottom: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.04)',
   },
   legendItem: {
     flexDirection: 'row',
@@ -355,28 +535,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   legendText: {
-    color: theme.muted,
+    color: theme.textSecondary,
     fontSize: 12,
+    fontWeight: '500',
   },
-  tooltip: {
-    position: 'absolute',
-    width: 110,
-    backgroundColor: theme.surfaceElevated,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  aiTag: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
   },
-  tooltipPrice: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.text,
-  },
-  tooltipLabel: {
-    fontSize: 11,
-    color: theme.muted,
-    marginTop: 2,
+  legendTextAi: {
+    color: '#9b6ff7',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
