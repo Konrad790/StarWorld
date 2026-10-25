@@ -11,8 +11,6 @@
 [![SQLite](https://img.shields.io/badge/SQLite-expo--sqlite-003B57?logo=sqlite&logoColor=white)](https://docs.expo.dev/versions/latest/sdk/sqlite/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<img src="readme_files/portfolio.png" alt="Collection screen" width="260" />
-
 </div>
 
 ---
