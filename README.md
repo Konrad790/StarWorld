@@ -27,7 +27,7 @@ Everything runs **on the device**: the catalogue is a bundled SQLite database, t
 - **Two-database architecture** — a read-only, bundled *market* DB and a separate writable *user* DB, with versioned asset re-deployment and schema migration.
 - **Feature engineering in TypeScript** that mirrors the Python training pipeline exactly (16-feature vector, `log1p` target transform, P0 price cascade, retirement-year imputation).
 - **Instant fuzzy search** over IDs and names with Fuse.js, with ID-prefix boosting.
-- **GPU-accelerated charts** with Skia + Victory Native, history and forecast drawn as one continuous series.
+- **Charts** created with React Native SVG, history and forecast drawn as one continuous series.
 - **Native build patching** — `patch-package` fix for an Swift concurrency incompatibility in `expo-modules-jsi`, required to build ExecuTorch's JSI bindings on the current Expo SDK.
 
 ---
@@ -42,22 +42,22 @@ Everything runs **on the device**: the catalogue is a bundled SQLite database, t
 
 ## Features
 
-### 🔎 Fuzzy search
+### Fuzzy search
 Typing `vadr` finds every *Darth Vader* variant. The index is built once at startup from all figures and searches `fig_num`, `bricklink_id` and `name` (weights 0.4 / 0.4 / 0.2) with typo tolerance (`threshold: 0.35`). Queries that look like IDs (`sw0586`) have exact-prefix matches boosted to the top; results are capped at 50 and de-duplicated. Each result shows the latest known market price (or `N/A`).
 
-### 📈 Figure detail & price trajectory
+### Figure detail & price trajectory
 For each figure the app shows the image, the current price (latest snapshot, falling back to first observed price), and a chart combining:
 - **Historical sales** — half-yearly average EU price (blue),
 - **AI forecast** — predictions at +6, +12, … +48 months (purple, with markers),
 - the % / € change relative to now.
 
-### 🗃️ Collection / portfolio
+### Collection / portfolio
 - Add a figure with the price you paid, edit it, or delete it.
 - Each row shows *Paid vs. Now* and the P/L percentage (green/red).
 - The portfolio chart sums historical snapshots of every owned figure per half-year, then **sums the ML forecasts** per horizon, drawing *Historical Portfolio* (green) and *Projected Growth* (gold) with a draggable "+12M" marker.
 - Input validated (price > 0) and typed error classes (`ValidationError`, `NotFoundError`, `QueryError`).
 
-### ✈️ Fully offline & private
+### Fully offline & private
 No network calls. Collection data lives in a local SQLite file.
 
 ---
@@ -206,7 +206,7 @@ flowchart LR
     OUT -->|"expm1(y)"| EUR["€ forecast"]
 ```
 
-1. **Training (offline, Python).** One model per horizon — **6, 12, 18, 24, 30, 36, 42 and 48 months** — predicts `y = log1p(price_target)` from 16 features. Models are exported to ExecuTorch `.pte` files. *(Training pipeline: see [starworld-model-training](https://github.com/Konrad790/PLACEHOLDER) — placeholder, link to be added.)*
+1. **Training (offline, Python).** One model per horizon — **6, 12, 18, 24, 30, 36, 42 and 48 months** — predicts `y = log1p(price_target)` from 16 features. Models are exported to ExecuTorch `.pte` files. *(Training pipeline: see [starworld-model-training](https://github.com/Konrad790/StarWorld--model))*
 2. **Bundling.** `metro.config.js` registers `pte` and `db` as binary asset extensions so Metro packages them and `expo-asset` can resolve them.
 3. **Deployment.** On first launch (and whenever `CURRENT_MODEL_VERSION` changes) `modelLoader.ts` copies each `.pte` from the app bundle to `documentDirectory/models/`, since the native runtime needs a real file path.
 4. **Loading.** `rne.loadModel(path)` creates a native model handle. Input/output shapes are read from the model's own **schema** (`model.schema.forward`) with a `[1,16]` → `[1,1]` fallback, so a re-exported model with a different batch dimension doesn't need app changes. All 8 models load in parallel; the engine state is `ready`, `partial` (some horizons failed) or `failed`, and the UI degrades gracefully instead of crashing.
@@ -247,10 +247,6 @@ Built in [`src/forecast/infer.ts`](src/forecast/infer.ts) and required to match 
 - iOS deployment target is 17.0 (`expo-build-properties`).
 - `patches/expo-modules-jsi+57.1.1.patch` (applied automatically by `postinstall`) works around Swift concurrency compile errors in `expo-modules-jsi`.
 
-### Software Mansion
-
-I used `react-native-executorch` and the broader Software Mansion ecosystem (Reanimated 4, Worklets, Gesture Handler) in this project, and I'm applying for an internship at Software Mansion. Working against a young, fast-moving API (v0.10 low-level `loadModel` / `tensor` / `execute`) meant reading the library's source and types, handling native-build issues, and designing a robust loading/inference layer around it.
-
 ---
 
 ## Tech stack
@@ -262,7 +258,7 @@ I used `react-native-executorch` and the broader Software Mansion ecosystem (Rea
 | On-device ML | `react-native-executorch` (ExecuTorch), `.pte` models |
 | Database | `expo-sqlite`, `expo-asset`, `expo-file-system` |
 | Search | Fuse.js |
-| Charts | `@shopify/react-native-skia`, `victory-native` |
+| Charts | `react-native-svg` |
 | Animation / gestures | Reanimated 4, Worklets, Gesture Handler |
 | Tooling | ESLint, `patch-package`, EAS |
 
@@ -292,9 +288,18 @@ npx tsc --noEmit
 
 ## Data & credits
 
-- Minifigure and set catalogue data: **[Rebrickable](https://rebrickable.com)** — CC BY 4.0.
-- Market price data & enrichment: *PLACEHOLDER — add the sources you used.*
-- Inference runtime: [ExecuTorch](https://pytorch.org/executorch/) by PyTorch/Meta; React Native bindings by [Software Mansion](https://github.com/software-mansion/react-native-executorch).
+- **Minifigure and set catalogue data:**
+  - **[Rebrickable](https://rebrickable.com)** — Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  - **[Wookieepedia](https://starwars.fandom.com/)** — Content is available under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+  - **[Brickset](https://brickset.com)**, **[BrickNav](https://bricknav.com/)**, and **[Buka Atlas](https://bukabricks.com/)** — Catalogue data reference.
+- **Market price data & enrichment:**
+  - **[BrickRanker](https://brickranker.com/)**
+- **Currency exchange:**
+  - **[Frankfurter API](https://www.frankfurter.app/)** — Open-source currency data API.
+
+### Inference Runtime & Software
+- **[ExecuTorch](https://pytorch.org/executorch/)** by PyTorch/Meta
+- **React Native bindings** by **[Software Mansion](https://github.com/software-mansion/react-native-executorch)**
 
 ### Disclaimer
 
@@ -302,7 +307,7 @@ StarWorld is an **unofficial fan project**, not affiliated with, endorsed or spo
 
 ## Author
 
-**PLACEHOLDER — Your name** · [GitHub](https://github.com/Konrad790) · [LinkedIn](https://linkedin.com/in/PLACEHOLDER)
+**PLACEHOLDER — Konrad Leżoń** · [GitHub](https://github.com/Konrad790) ·
 
 ## License
 
