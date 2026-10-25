@@ -307,7 +307,7 @@ StarWorld is an **unofficial fan project**, not affiliated with, endorsed or spo
 
 ## Author
 
-**PLACEHOLDER — Konrad Leżoń** · [GitHub](https://github.com/Konrad790) ·
+**Konrad Leżoń** · [GitHub](https://github.com/Konrad790) ·
 
 ## License
 
