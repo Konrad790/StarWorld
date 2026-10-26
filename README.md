@@ -206,7 +206,7 @@ flowchart LR
     OUT -->|"expm1(y)"| EUR["€ forecast"]
 ```
 
-1. **Training (offline, Python).** One model per horizon — **6, 12, 18, 24, 30, 36, 42 and 48 months** — predicts `y = log1p(price_target)` from 16 features. Models are exported to ExecuTorch `.pte` files. *(Training pipeline: see [starworld-model-training](https://github.com/Konrad790/StarWorld--model))*
+1. **Training (offline, Python).** One model per horizon — **6, 12, 18, 24, 30, 36, 42 and 48 months** — predicts `y = log1p(price_target)` from 16 features. Models are exported to ExecuTorch `.pte` files. R^2 approximately 0.98, MAE ~ 2.2 - 2.7 Euro.
 2. **Bundling.** `metro.config.js` registers `pte` and `db` as binary asset extensions so Metro packages them and `expo-asset` can resolve them.
 3. **Deployment.** On first launch (and whenever `CURRENT_MODEL_VERSION` changes) `modelLoader.ts` copies each `.pte` from the app bundle to `documentDirectory/models/`, since the native runtime needs a real file path.
 4. **Loading.** `rne.loadModel(path)` creates a native model handle. Input/output shapes are read from the model's own **schema** (`model.schema.forward`) with a `[1,16]` → `[1,1]` fallback, so a re-exported model with a different batch dimension doesn't need app changes. All 8 models load in parallel; the engine state is `ready`, `partial` (some horizons failed) or `failed`, and the UI degrades gracefully instead of crashing.
