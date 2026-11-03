@@ -19,7 +19,7 @@
 
 StarWorld lets collectors search a catalogue of **1 343 LEGO Star Wars minifigures**, browse **~11 900 half-yearly market price snapshots** (2022 H1 → 2026 H2), record what they paid, and see **AI-generated price forecasts up to 48 months ahead** for both single figures and their whole portfolio.
 
-Everything runs **on the device**: the catalogue is a bundled SQLite database, the search is an in-memory fuzzy index, and the forecasts come from **8 neural/regression models compiled to ExecuTorch `.pte` programs** and executed natively through [`react-native-executorch`](https://github.com/software-mansion/react-native-executorch). No backend, no accounts, no network required, no data leaves the phone.
+Everything runs **on the device**: the catalogue is a bundled SQLite database, the search is an in-memory fuzzy index, and the forecasts come from **8 XGBoost models compiled to ExecuTorch `.pte` programs** and executed natively through [`react-native-executorch`](https://github.com/software-mansion/react-native-executorch). No backend, no accounts, no network required, no data leaves the phone.
 
 ---
 
@@ -89,7 +89,7 @@ flowchart LR
 ```
 app/                     Expo Router routes (index, (tabs)/search|collection, search/[id], collection/add, info)
 src/
-  components/            PriceChart, PortfolioChart (Skia), MinifigCard, CollectionRow, ErrorBoundary, Icons
+  components/            PriceChart, PortfolioChart (svg), MinifigCard, CollectionRow, ErrorBoundary, Icons
   constants/             theme, model asset registry
   db/                    client (init, copy, migration), schema (DDL), queries/
   forecast/              modelLoader (ExecuTorch), infer (features + inference), portfolio (aggregation)
@@ -197,7 +197,7 @@ flowchart LR
     OUT -->|"expm1(y)"| EUR["€ forecast"]
 ```
 
-1. **Training (offline, Python).** One model per horizon — **6, 12, 18, 24, 30, 36, 42 and 48 months** — predicts `y = log1p(price_target)` from 16 features. Models are exported to ExecuTorch `.pte` files. R^2 approximately 0.98, MAE ~ 2.2 - 2.7 Euro.
+1. **Training (offline, Python).** One model per horizon — **6, 12, 18, 24, 30, 36, 42 and 48 months** — predicts `y = log1p(price_target)` from 16 features. Models are exported to ExecuTorch `.pte` files.
 2. **Bundling.** `metro.config.js` registers `pte` and `db` as binary asset extensions so Metro packages them and `expo-asset` can resolve them.
 3. **Deployment.** On first launch (and whenever `CURRENT_MODEL_VERSION` changes) `modelLoader.ts` copies each `.pte` from the app bundle to `documentDirectory/models/`, since the native runtime needs a real file path.
 4. **Loading.** `rne.loadModel(path)` creates a native model handle. Input/output shapes are read from the model's own **schema** (`model.schema.forward`) with a `[1,16]` → `[1,1]` fallback, so a re-exported model with a different batch dimension doesn't need app changes. All 8 models load in parallel; the engine state is `ready`, `partial` (some horizons failed) or `failed`, and the UI degrades gracefully instead of crashing.
@@ -230,7 +230,7 @@ Built in [`src/forecast/infer.ts`](src/forecast/infer.ts) and required to match 
 
 ### Portfolio forecast
 
-`computePortfolioTrajectory` aggregates historical snapshots by half-year and runs `inferAllHorizons` for **every owned figure × 8 horizons concurrently**, then sums the results per horizon. Runtime is logged against a 10 ms budget.
+`computePortfolioTrajectory` aggregates historical snapshots by half-year and runs `inferAllHorizons` for **every owned figure × 8 horizons concurrently**, then sums the results per horizon.
 
 ### Platform notes
 
@@ -279,6 +279,9 @@ npx tsc --noEmit
 
 ## Data & credits
 
+Data from the sources below was collected and used to build the
+bundled local SQLite database. The app makes no network requests at runtime.
+
 - **Minifigure and set catalogue data:**
   - **[Rebrickable](https://rebrickable.com)** — Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
   - **[Wookieepedia](https://starwars.fandom.com/)** — Content is available under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
@@ -292,13 +295,22 @@ npx tsc --noEmit
 - **[ExecuTorch](https://pytorch.org/executorch/)** by PyTorch/Meta
 - **React Native bindings** by **[Software Mansion](https://github.com/software-mansion/react-native-executorch)**
 
+## Status & future plans
+
+StarWorld is a work in progress. The current forecasting models are a first version, and I'm planning to improve them and the app itself.
+
+-  **Model evaluation:** stricter time-based validation and comparison against simple baselines
+-  **Performance:** benchmark on-device inference latency and memory usage on real devices
+-  **UI and animations:** smoother transitions and polished charts, using Reanimated and Gesture Handler
+-  **Data:** refresh the bundled market dataset in future app releases
+
 ### Disclaimer
 
 StarWorld is an **unofficial fan project**, not affiliated with, endorsed or sponsored by The LEGO Group, Lucasfilm Ltd. or The Walt Disney Company. LEGO® is a trademark of The LEGO Group; Star Wars™ is a trademark of Lucasfilm Ltd. Price forecasts are statistical estimates and **not financial advice**.
 
 ## Author
 
-**Konrad Leżoń** · [GitHub](https://github.com/Konrad790) ·
+**Konrad Leżoń** · [GitHub](https://github.com/Konrad790)
 
 ## License
 
