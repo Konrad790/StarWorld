@@ -21,15 +21,6 @@ StarWorld lets collectors search a catalogue of **1 343 LEGO Star Wars minifigur
 
 Everything runs **on the device**: the catalogue is a bundled SQLite database, the search is an in-memory fuzzy index, and the forecasts come from **8 neural/regression models compiled to ExecuTorch `.pte` programs** and executed natively through [`react-native-executorch`](https://github.com/software-mansion/react-native-executorch). No backend, no accounts, no network required, no data leaves the phone.
 
-### Why it's interesting (engineering highlights)
-
-- **On-device ML inference with ExecuTorch** — 8 horizon-specific models (6 → 48 months) loaded through the low-level JSI API (`loadModel`, `tensor`, `model.execute`) and used to forecast an entire portfolio in a few milliseconds.
-- **Two-database architecture** — a read-only, bundled *market* DB and a separate writable *user* DB, with versioned asset re-deployment and schema migration.
-- **Feature engineering in TypeScript** that mirrors the Python training pipeline exactly (16-feature vector, `log1p` target transform, P0 price cascade, retirement-year imputation).
-- **Instant fuzzy search** over IDs and names with Fuse.js, with ID-prefix boosting.
-- **Charts** created with React Native SVG, history and forecast drawn as one continuous series.
-- **Native build patching** — `patch-package` fix for an Swift concurrency incompatibility in `expo-modules-jsi`, required to build ExecuTorch's JSI bindings on the current Expo SDK.
-
 ---
 
 ## Screenshots
@@ -54,7 +45,7 @@ For each figure the app shows the image, the current price (latest snapshot, fal
 ### Collection / portfolio
 - Add a figure with the price you paid, edit it, or delete it.
 - Each row shows *Paid vs. Now* and the P/L percentage (green/red).
-- The portfolio chart sums historical snapshots of every owned figure per half-year, then **sums the ML forecasts** per horizon, drawing *Historical Portfolio* (green) and *Projected Growth* (gold) with a draggable "+12M" marker.
+- The portfolio chart sums historical snapshots of every owned figure per half-year, then **sums the ML forecasts** per horizon, drawing *Historical Portfolio* (green) and *Projected Growth* (gold).
 - Input validated (price > 0) and typed error classes (`ValidationError`, `NotFoundError`, `QueryError`).
 
 ### Fully offline & private
@@ -192,7 +183,7 @@ erDiagram
 
 ## On-device ML with ExecuTorch & Software Mansion
 
-The forecasting engine is built on **[ExecuTorch](https://pytorch.org/executorch/)** — PyTorch's runtime for on-device inference — consumed from React Native through **[`react-native-executorch`](https://github.com/software-mansion/react-native-executorch)**, the open-source library maintained by **[Software Mansion](https://swmansion.com/)** (also the team behind Reanimated, Gesture Handler, and React Native Screens, all of which StarWorld uses).
+The forecasting engine is built on **[ExecuTorch](https://pytorch.org/executorch/)** — PyTorch's runtime for on-device inference — consumed from React Native through **[`react-native-executorch`](https://github.com/software-mansion/react-native-executorch)**, the open-source library maintained by **[Software Mansion](https://swmansion.com/)** (also the team behind Gesture Handler and React Native Screens, both of which StarWorld uses).
 
 ### How it works
 
@@ -259,7 +250,7 @@ Built in [`src/forecast/infer.ts`](src/forecast/infer.ts) and required to match 
 | Database | `expo-sqlite`, `expo-asset`, `expo-file-system` |
 | Search | Fuse.js |
 | Charts | `react-native-svg` |
-| Animation / gestures | Reanimated 4, Worklets, Gesture Handler |
+| Animation / gestures | Worklets, Gesture Handler |
 | Tooling | ESLint, `patch-package`, EAS |
 
 ---
